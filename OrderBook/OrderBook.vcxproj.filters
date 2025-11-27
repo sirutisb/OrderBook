@@ -15,16 +15,10 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="src\old_main.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="src\main.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="src\orderBook.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
-    <ClCompile Include="include\new_orderBook.h">
+    <ClCompile Include="include\orderBook.h">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -32,10 +26,7 @@
     <ClInclude Include="include\lru_cache.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\old_OrderBook.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="include\orderBook.h">
+    <ClInclude Include="include\marketSimulator.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

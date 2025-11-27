@@ -50,7 +50,7 @@
     <UseDebugLibraries>false</UseDebugLibraries>
     <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
-    <CharacterSet>Unicode</CharacterSet>
+    <CharacterSet>MultiByte</CharacterSet>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
   <ImportGroup Label="ExtensionSettings">
@@ -131,15 +131,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="include\new_orderBook.h" />
-    <ClCompile Include="src\old_main.cpp" />
+    <ClCompile Include="include\orderBook.h" />
     <ClCompile Include="src\main.cpp" />
-    <ClCompile Include="src\orderBook.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="include\orderBook.h" />
+    <ClInclude Include="include\marketSimulator.h" />
     <ClInclude Include="include\lru_cache.h" />
-    <ClInclude Include="include\old_OrderBook.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
