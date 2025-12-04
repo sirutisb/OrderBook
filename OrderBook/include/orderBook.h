@@ -234,7 +234,6 @@ private:
     std::map<Price, PriceLevel, std::greater<Price>> bids_;
     std::map<Price, PriceLevel> asks_;
     std::unordered_map<OrderId, OrderEntry> orderLookup_;
-
     bool canFullyMatch(const OrderPointer& order) const {
         Quantity vol = 0;
         if (order->side == Side::BUY) {
@@ -271,7 +270,7 @@ private:
 
                 auto bestAskIt = asks_.begin();
                 Price askPrice = bestAskIt->first;
-                auto& bestAsks = bestAskIt->second;
+                PriceLevel& bestAsks = bestAskIt->second;
 
                 if (askPrice > order->price) break;
 
@@ -346,7 +345,7 @@ private:
             while (!order->isFilled() && !asks_.empty()) {
                 auto bestAskIt = asks_.begin();
                 Price askPrice = bestAskIt->first;
-                auto& bestAsks = bestAskIt->second;
+                PriceLevel& bestAsks = bestAskIt->second;
 
                 while (!bestAsks.orders_.empty() && !order->isFilled()) {
                     OrderPointer& standingOrder = bestAsks.orders_.front();
@@ -354,7 +353,6 @@ private:
 
                     order->fill(fillQty);
                     standingOrder->fill(fillQty);
-
                     trades.push_back(Trade{
                         order->id,
                         standingOrder->id,
@@ -363,7 +361,7 @@ private:
                     });
 
                     if (standingOrder->isFilled()) {
-                        orderLookup_.erase(standingOrder->id); // crash?
+                        orderLookup_.erase(standingOrder->id); // check logic again (for errors, for some reason crash if swapped)
                         bestAsks.removeFrontOrder();
                     }
                 }

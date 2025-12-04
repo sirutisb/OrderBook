@@ -9,12 +9,10 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
     auto bids = orderBook.getBidDepth(levels);
 
     Quantity maxVolume = 0;
-    for (const auto& level : asks) {
+    for (const auto& level : asks)
         maxVolume = std::max(maxVolume, level.volume);
-    }
-    for (const auto& level : bids) {
+    for (const auto& level : bids)
         maxVolume = std::max(maxVolume, level.volume);
-    }
 
     if (maxVolume == 0) {
         std::cout << "Order book is empty\n";
@@ -69,57 +67,35 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
     std::cout << std::string(80, '=') << "\n\n";
 }
 
-
-
-
-
-#include <iostream>
-#include <vector>
-#include <string>
-#include <thread>
-#include <chrono>
-
-void fastPrint() {
-    // ANSI Escape Codes:
-    // \033[?25l  -> Hide Cursor (makes it look smoother)
-    // \033[H     -> Move Cursor to Home (0,0)
-    std::cout << "\033[?25l";
-
-    while (true) {
-        // 1. Create a "buffer" in memory
-        std::string buffer;
-
-        // 2. Build your frame
-        buffer += "\033[H"; // Move to top-left
-        buffer += "--- ORDER BOOK ---\n";
-        buffer += "ASKS:\n";
-        buffer += "105.50  |  500\n";
-        buffer += "105.00  |  200\n";
-        buffer += "------------------\n";
-        buffer += "BIDS:\n";
-        buffer += "104.50  |  " + std::to_string(rand() % 1000) + "\n"; // Simulate update
-        buffer += "104.00  |  300\n";
-
-        // 3. Print the whole frame at once
-        std::cout << buffer << std::flush;
-
-        // Simulate some latency
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-}
+#pragma region fastPrint
+//void fastPrint() {
+//    // ANSI Escape Codes:
+//    // \033[?25l  -> Hide Cursor (makes it look smoother)
+//    // \033[H     -> Move Cursor to Home (0,0)
+//    std::cout << "\033[?25l";
+//
+//    while (true) {
+//        // 1. Create a "buffer" in memory
+//        std::string buffer;
+//
+//        // 2. Build your frame
+//        buffer += "\033[H"; // Move to top-left
+//        buffer += "--- ORDER BOOK ---\n";
+//        buffer += "ASKS:\n";
+//        buffer += "105.50  |  500\n";
+//        buffer += "105.00  |  200\n";
+//        buffer += "------------------\n";
+//        buffer += "BIDS:\n";
+//        buffer += "104.50  |  " + std::to_string(rand() % 1000) + "\n"; // Simulate update
+//        buffer += "104.00  |  300\n";
+//
+//        // 3. Print the whole frame at once
+//        std::cout << buffer << std::flush;
+//    }
+//}
+#pragma endregion
 
 int main() {
-
-
-
-    fastPrint();
-
-
-
-
-    return 0;
-
-
 
 	OrderBook orderBook;
     MarketSimulator simulator(orderBook, 10000, 50); // center=10000, spread=50
