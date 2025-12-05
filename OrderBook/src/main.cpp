@@ -13,22 +13,16 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
     auto bids = orderBook.getBidDepth(levels);
 
     std::string buffer;
-
-    //std::cout << "\033[?25l"; // hide cursor
     //buffer += "\033[H"; // Move to top-left
-
-
+    buffer += "\033[2J\033[H"; // Clear screen AND Move to top-left
 
     Quantity maxVolume = 0;
-    for (const auto& level : asks) {
+    for (const auto& level : asks)
         maxVolume = std::max(maxVolume, level.volume);
-    }
-    for (const auto& level : bids) {
+    for (const auto& level : bids)
         maxVolume = std::max(maxVolume, level.volume);
-    }
 
     if (maxVolume == 0) {
-        std::cout << "Order book is empty\n";
         return;
     }
 
@@ -43,17 +37,12 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
         const auto& level = *it;
         int barLength = static_cast<int>((level.volume * barWidth) / maxVolume);
 
-        //std::cout << std::fixed << std::setprecision(2);
         buffer +=
             std::to_string(level.price) + " | "
             + std::to_string(level.volume) + " | "
             + std::string(barLength, '#') + "\n";
-            //+ std::string(barLength, '█') + "\n";
-
-
     }
 
-    // Handle optional return values
     auto bestAsk = orderBook.getBestAsk();
     auto bestBid = orderBook.getBestBid();
     auto spread = orderBook.getSpread();
@@ -83,57 +72,18 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
     buffer += "Total Orders: " + std::to_string(orderBook.getOrderCount()) + "\n";
     buffer += std::string(80, '=') + "\n\n";
 
-
-    system("cls");
     std::cout << buffer << std::flush;
 }
 
-
-
-
-
-#include <iostream>
-#include <vector>
-#include <string>
-#include <thread>
-#include <chrono>
-
-void fastPrint() {
-    // ANSI Escape Codes:
-    // \033[?25l  -> Hide Cursor (makes it look smoother)
-    // \033[H     -> Move Cursor to Home (0,0)
-    std::cout << "\033[?25l";
-
-    while (true) {
-        // 1. Create a "buffer" in memory
-        std::string buffer;
-
-        // 2. Build your frame
-        buffer += "\033[H"; // Move to top-left
-        buffer += "--- ORDER BOOK ---\n";
-        buffer += "ASKS:\n";
-        buffer += "105.50  |  500\n";
-        buffer += "105.00  |  200\n";
-        buffer += "------------------\n";
-        buffer += "BIDS:\n";
-        buffer += "104.50  |  " + std::to_string(rand() % 1000) + "\n"; // Simulate update
-        buffer += "104.00  |  300\n";
-
-        // 3. Print the whole frame at once
-        std::cout << buffer << std::flush;
-
-        // Simulate some latency
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-}
-
 int main() {
-    // 1. Setup OrderBook and State
+    std::cout << "\033[?25l"; // hide cursor
+
+
     OrderBook orderBook;
     std::vector<OrderId> activeOrderIds;
     OrderId nextOrderId = 1;
 
-    // 2. Setup Randomness
+    // Setup Randomness
     std::mt19937_64 rng(std::random_device{}());
 
     // Config
@@ -147,7 +97,7 @@ int main() {
     std::uniform_int_distribution<int> sideDist(0, 1);
     std::uniform_int_distribution<int> actionDist(0, 99);
 
-    // 3. Define Actions as Lambdas (Inline functions)
+    // Market Simulation Set up
 
     auto addOrder = [&]() {
         Side side = (sideDist(rng) == 0) ? Side::BUY : Side::SELL;
@@ -169,9 +119,9 @@ int main() {
             activeOrderIds.push_back(id);
         }
 
-        std::cout << "[ADD] ID:" << id << " " << (side == Side::BUY ? "BUY" : "SELL")
-            << " @" << price << " Q:" << qty << " -> Trades: " << trades.size() << "\n";
-        };
+        //std::cout << "[ADD] ID:" << id << " " << (side == Side::BUY ? "BUY" : "SELL")
+        //    << " @" << price << " Q:" << qty << " -> Trades: " << trades.size() << "\n";
+    };
 
     auto cancelOrder = [&]() {
         if (activeOrderIds.empty()) return;
@@ -187,8 +137,8 @@ int main() {
         // Remove from tracking
         activeOrderIds.erase(activeOrderIds.begin() + idx);
 
-        if (success) std::cout << "[CANCEL] ID:" << id << " Success\n";
-        };
+        //if (success) std::cout << "[CANCEL] ID:" << id << " Success\n";
+    };
 
     auto modifyOrder = [&]() {
         if (activeOrderIds.empty()) return;
@@ -204,7 +154,7 @@ int main() {
         try {
             // EXECUTE
             auto trades = orderBook.modifyOrder(mod);
-            std::cout << "[MODIFY] ID:" << id << " NewPrice:" << newPrice << " NewQty:" << newQty << "\n";
+            //std::cout << "[MODIFY] ID:" << id << " NewPrice:" << newPrice << " NewQty:" << newQty << "\n";
 
             // If filled, remove from active list
             if (!trades.empty()) {
@@ -214,16 +164,13 @@ int main() {
             // Order likely already filled or gone
             activeOrderIds.erase(activeOrderIds.begin() + idx);
         }
-        };
+       };
 
 
-    // 4. Main Event Loop
-    std::cout << "Starting Simulation (Press Ctrl+C to stop)...\n";
-
+    // Main Event Loop
     for (int i = 0;; ++i) {
         int action = actionDist(rng);
-
-        // Simulation Step (The "Writer")
+        // Simulation step
         if (action < 60) addOrder();       // 60% Add
         else if (action < 80) cancelOrder(); // 20% Cancel
         else modifyOrder();                // 20% Modify
@@ -232,6 +179,5 @@ int main() {
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
-    std::cout << "Simulation Complete.\n";
     return 0;
 }

@@ -66,11 +66,6 @@ struct OrderEntry {
 };
 
 struct PriceLevel {
-    //PriceLevel(Price price)
-    //    : price_(price)
-    //{
-    //}
-
     PriceLevel() : totalVolume_(0) {}
 
     void addOrder(const Order& order) {
@@ -102,7 +97,6 @@ struct OrderModify {
     Price price_;
     Quantity quantity_;
 
-    // Todo: just modify the original order object??
     Order toOrder(Side side, OrderType type, TimeInForce tif) const {
         return Order(id_, side, type, price_, quantity_, tif);
     }
@@ -150,13 +144,13 @@ public:
             auto levelIt = bids_.find(order.price);
             PriceLevel& level = levelIt->second;
             level.removeOrder(entry.location_);
-            if (level.isEmpty()) bids_.erase(order.price);
+            if (level.isEmpty()) bids_.erase(levelIt);
         }
         else {
             auto levelIt = asks_.find(order.price);
             PriceLevel& level = levelIt->second;
             level.removeOrder(entry.location_);
-            if (level.isEmpty()) asks_.erase(order.price);
+            if (level.isEmpty()) asks_.erase(levelIt);
         }
 
         orderLookup_.erase(orderIt);
@@ -364,7 +358,7 @@ private:
                     });
 
                     if (standingOrder.isFilled()) {
-                        orderLookup_.erase(standingOrder.id); // check logic again (for errors, for some reason crash if swapped)
+                        orderLookup_.erase(standingOrder.id);
                         bestAsks.removeFrontOrder();
                     }
                 }
@@ -396,7 +390,7 @@ private:
                         });
 
                     if (standingOrder.isFilled()) {
-                        orderLookup_.erase(standingOrder.id); // crash?
+                        orderLookup_.erase(standingOrder.id);
                         bestBids.removeFrontOrder();
                     }
                 }
