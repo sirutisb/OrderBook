@@ -147,12 +147,16 @@ public:
         const auto& entry = orderIt->second;
         const Order& order = *entry.location_;
         if (order.side == Side::BUY) {
-            PriceLevel& level = bids_.at(order.price);
+            auto levelIt = bids_.find(order.price);
+            PriceLevel& level = levelIt->second;
             level.removeOrder(entry.location_);
+            if (level.isEmpty()) bids_.erase(order.price);
         }
         else {
-            PriceLevel& level = asks_.at(order.price);
+            auto levelIt = asks_.find(order.price);
+            PriceLevel& level = levelIt->second;
             level.removeOrder(entry.location_);
+            if (level.isEmpty()) asks_.erase(order.price);
         }
 
         orderLookup_.erase(orderIt);
