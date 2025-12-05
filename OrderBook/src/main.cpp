@@ -2,7 +2,11 @@
 #include <vector>
 
 #include "orderBook.h"
-#include "marketSimulator.h"
+
+#include <thread>
+#include <random>
+#include <chrono>
+#include <memory>
 
 void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWidth = 50) {
     auto asks = orderBook.getAskDepth(levels);
@@ -11,7 +15,7 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
     std::string buffer;
 
     //std::cout << "\033[?25l"; // hide cursor
-    buffer += "\033[H"; // Move to top-left
+    //buffer += "\033[H"; // Move to top-left
 
 
 
@@ -39,45 +43,49 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
         const auto& level = *it;
         int barLength = static_cast<int>((level.volume * barWidth) / maxVolume);
 
-        std::cout << std::fixed << std::setprecision(2);
+        //std::cout << std::fixed << std::setprecision(2);
         buffer +=
-              level.price + " | "
+            std::to_string(level.price) + " | "
             + std::to_string(level.volume) + " | "
-            + std::string(barLength, '█') + "\n";
+            + std::string(barLength, '#') + "\n";
+            //+ std::string(barLength, '█') + "\n";
 
 
-        std::cout << buffer << std::flush;
     }
 
     // Handle optional return values
-   /* auto bestAsk = orderBook.getBestAsk();
+    auto bestAsk = orderBook.getBestAsk();
     auto bestBid = orderBook.getBestBid();
     auto spread = orderBook.getSpread();
 
     if (bestAsk && bestBid && spread) {
         Price midPrice = (*bestAsk + *bestBid) / 2;
 
-        std::cout << std::string(80, '-') << "\n";
-        std::cout << "SPREAD: " << std::fixed << std::setprecision(2) << *spread
-            << " | MID: " << midPrice << "\n";
-        std::cout << std::string(80, '-') << "\n";
+        buffer += std::string(80, '-') + "\n";
+        buffer += "SPREAD: " + std::to_string(*spread)
+            + " | MID: " + std::to_string(midPrice) + "\n";
+        buffer += std::string(80, '-') + "\n";
     }
 
-    std::cout << "\nBIDS (Buy Orders):\n";
-    std::cout << std::string(80, '-') << "\n";
+    buffer+= "\nBIDS (Buy Orders):\n";
+    buffer+= std::string(80, '-') + "\n";
 
     for (const auto& level : bids) {
         int barLength = static_cast<int>((level.volume * barWidth) / maxVolume);
 
-        std::cout << std::fixed << std::setprecision(2)
-            << std::setw(10) << level.price << " | "
-            << std::setw(8) << level.volume << " | "
-            << std::string(barLength, '█') << "\n";
+        buffer
+            += std::to_string(level.price) + " | "
+            += std::to_string(level.volume) + " | "
+            += std::string(barLength, '#') + "\n";
     }
 
-    std::cout << std::string(80, '=') << "\n";
-    std::cout << "Total Orders: " << orderBook.getOrderCount() << "\n";
-    std::cout << std::string(80, '=') << "\n\n";*/
+    buffer += std::string(80, '=') + "\n";
+    buffer += "Total Orders: " + std::to_string(orderBook.getOrderCount()) + "\n";
+    buffer += std::string(80, '=') + "\n\n";
+
+
+    system("cls");
+    std::cout << buffer << std::flush;
 }
 
 
@@ -120,24 +128,110 @@ void fastPrint() {
 }
 
 int main() {
-	OrderBook orderBook;
-    MarketSimulator simulator(orderBook, 10000, 50); // center=10000, spread=50
+    // 1. Setup OrderBook and State
+    OrderBook orderBook;
+    std::vector<OrderId> activeOrderIds;
+    OrderId nextOrderId = 1;
 
-    simulator.start();
-    // ... let it run ...
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    // 2. Setup Randomness
+    std::mt19937_64 rng(std::random_device{}());
 
-    // Print order book periodically
-    for (int i = 0; i < 500000; ++i) {
-        //system("cls");
-        printOrderBook(orderBook, 10, 40);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    // Config
+    Price centerPrice = 10000;
+    Price spreadHalf = 50;
+
+    // Distributions
+    std::uniform_int_distribution<Price> priceDistBuy(centerPrice - spreadHalf - 100, centerPrice - spreadHalf);
+    std::uniform_int_distribution<Price> priceDistSell(centerPrice + spreadHalf, centerPrice + spreadHalf + 100);
+    std::uniform_int_distribution<Quantity> quantityDist(1, 100);
+    std::uniform_int_distribution<int> sideDist(0, 1);
+    std::uniform_int_distribution<int> actionDist(0, 99);
+
+    // 3. Define Actions as Lambdas (Inline functions)
+
+    auto addOrder = [&]() {
+        Side side = (sideDist(rng) == 0) ? Side::BUY : Side::SELL;
+        // 90% Limit, 10% Market
+        OrderType type = (std::uniform_int_distribution<int>(0, 99)(rng) < 90) ? OrderType::LIMIT : OrderType::MARKET;
+        TimeInForce tif = TimeInForce::GTC; // Keep it simple for demo
+
+        Price price = (type == OrderType::MARKET) ? 0 : ((side == Side::BUY) ? priceDistBuy(rng) : priceDistSell(rng));
+        Quantity qty = quantityDist(rng);
+        OrderId id = nextOrderId++;
+
+        Order order(id, side, type, price, qty, tif);
+
+        // EXECUTE
+        auto trades = orderBook.addOrder(order);
+
+        // TRACKING (Only if GTC and not filled)
+        if (type == OrderType::LIMIT && tif == TimeInForce::GTC && !order.isFilled()) {
+            activeOrderIds.push_back(id);
+        }
+
+        std::cout << "[ADD] ID:" << id << " " << (side == Side::BUY ? "BUY" : "SELL")
+            << " @" << price << " Q:" << qty << " -> Trades: " << trades.size() << "\n";
+        };
+
+    auto cancelOrder = [&]() {
+        if (activeOrderIds.empty()) return;
+
+        // Pick random index
+        std::uniform_int_distribution<size_t> idxDist(0, activeOrderIds.size() - 1);
+        size_t idx = idxDist(rng);
+        OrderId id = activeOrderIds[idx];
+
+        // EXECUTE
+        bool success = orderBook.cancelOrder(id);
+
+        // Remove from tracking
+        activeOrderIds.erase(activeOrderIds.begin() + idx);
+
+        if (success) std::cout << "[CANCEL] ID:" << id << " Success\n";
+        };
+
+    auto modifyOrder = [&]() {
+        if (activeOrderIds.empty()) return;
+
+        size_t idx = std::uniform_int_distribution<size_t>(0, activeOrderIds.size() - 1)(rng);
+        OrderId id = activeOrderIds[idx];
+
+        Quantity newQty = quantityDist(rng);
+        Price newPrice = (sideDist(rng) == 0) ? priceDistBuy(rng) : priceDistSell(rng);
+
+        OrderModify mod{ id, newPrice, newQty };
+
+        try {
+            // EXECUTE
+            auto trades = orderBook.modifyOrder(mod);
+            std::cout << "[MODIFY] ID:" << id << " NewPrice:" << newPrice << " NewQty:" << newQty << "\n";
+
+            // If filled, remove from active list
+            if (!trades.empty()) {
+                activeOrderIds.erase(activeOrderIds.begin() + idx);
+            }
+        } catch (...) {
+            // Order likely already filled or gone
+            activeOrderIds.erase(activeOrderIds.begin() + idx);
+        }
+        };
+
+
+    // 4. Main Event Loop
+    std::cout << "Starting Simulation (Press Ctrl+C to stop)...\n";
+
+    for (int i = 0;; ++i) {
+        int action = actionDist(rng);
+
+        // Simulation Step (The "Writer")
+        if (action < 60) addOrder();       // 60% Add
+        else if (action < 80) cancelOrder(); // 20% Cancel
+        else modifyOrder();                // 20% Modify
+
+        printOrderBook(orderBook);
+        std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
 
-    //orderBook.printOrderBook();
-    simulator.stop();
-
-    std::cout << "ended\n";
-
+    std::cout << "Simulation Complete.\n";
     return 0;
 }

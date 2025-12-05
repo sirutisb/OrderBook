@@ -132,7 +132,7 @@ private:
             orderId = nextOrderId++;
         }
 
-        OrderPointer order = std::make_shared<Order>(
+        Order order(
             orderId, side, type, price, quantity, tif
         );
 
@@ -142,7 +142,7 @@ private:
         // Track GTC limit orders that weren't fully filled
         if (type == OrderType::LIMIT &&
             tif == TimeInForce::GTC &&
-            !order->isFilled()) {
+            !order.isFilled()) {
             std::lock_guard<std::mutex> lock(mtx);
             activeOrderIds.push_back(orderId);
         }
@@ -217,15 +217,15 @@ private:
     }
 
     // Logging helpers
-    void logOrder(const std::string& action, const OrderPointer& order, size_t tradeCount) {
+    void logOrder(const std::string& action, const Order& order, size_t tradeCount) {
         return;
 
         std::cout << "[" << action << "] "
-            << "ID: " << order->id
-            << " | " << (order->side == Side::BUY ? "BUY " : "SELL")
-            << " | " << (order->type == OrderType::LIMIT ? "LIMIT " : "MARKET")
-            << " | Price: " << order->price
-            << " | Qty: " << order->quantity;
+            << "ID: " << order.id
+            << " | " << (order.side == Side::BUY ? "BUY " : "SELL")
+            << " | " << (order.type == OrderType::LIMIT ? "LIMIT " : "MARKET")
+            << " | Price: " << order.price
+            << " | Qty: " << order.quantity;
 
         if (tradeCount > 0) {
             std::cout << " | Trades: " << tradeCount;

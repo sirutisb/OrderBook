@@ -58,12 +58,11 @@ struct Trade {
     Quantity quantity;
 };
 
-using OrderPointer = std::shared_ptr<Order>;
-using OrderPointers = std::list<OrderPointer>;
+using Orders = std::list<Order>;
 
 struct OrderEntry {
-    OrderPointer order_{ nullptr };
-    OrderPointers::iterator location_;
+    //Order order_;
+    Orders::iterator location_;
 };
 
 struct PriceLevel {
@@ -72,20 +71,20 @@ struct PriceLevel {
     //{
     //}
 
-    PriceLevel() = default;
+    PriceLevel() : totalVolume_(0) {}
 
-    void addOrder(const OrderPointer& order) {
+    void addOrder(const Order& order) {
         orders_.push_back(order);
-        totalVolume_ += order->getRemainingQuantity();
+        totalVolume_ += order.getRemainingQuantity();
     }
 
-    void removeOrder(const OrderPointers::iterator& location) {
-        totalVolume_ -= (*location)->getRemainingQuantity();
+    void removeOrder(const Orders::iterator& location) {
+        totalVolume_ -= location->getRemainingQuantity();
         orders_.erase(location);
     }
 
     void removeFrontOrder() {
-        totalVolume_ -= orders_.front()->getRemainingQuantity();
+        totalVolume_ -= orders_.front().getRemainingQuantity();
         orders_.pop_front();
     }
 
@@ -95,7 +94,7 @@ struct PriceLevel {
 
     //Price price_;
     Quantity totalVolume_;
-    OrderPointers orders_;
+    Orders orders_;
 };
 
 struct OrderModify {
@@ -103,17 +102,11 @@ struct OrderModify {
     Price price_;
     Quantity quantity_;
 
-    OrderPointer toOrderPointer(Side side, OrderType type, TimeInForce tif) const {
-        return std::make_shared<Order>(id_, side, type, price_, quantity_, tif);
+    // Todo: just modify the original order object??
+    Order toOrder(Side side, OrderType type, TimeInForce tif) const {
+        return Order(id_, side, type, price_, quantity_, tif);
     }
 };
-
-// Main OrderBook class
-/*
-TODO:
-Do I need sharedpointers or can it be stack allocated.
-
-*/
 
 class OrderBook {
 public:
@@ -122,22 +115,23 @@ public:
         , nextTradeId_(0)
     {
     }
+
     ~OrderBook() = default;
 
     OrderBook(const OrderBook&) = delete;
     OrderBook& operator=(const OrderBook&) = delete;
 
-    std::vector<Trade> addOrder(const OrderPointer& order) {
+    std::vector<Trade> addOrder(Order& order) {
         std::vector<Trade> trades;
-        if (order->type == OrderType::LIMIT) {
-            if (order->tif == TimeInForce::FOK && !canFullyMatch(order)) {
+        if (order.type == OrderType::LIMIT) {
+            if (order.tif == TimeInForce::FOK && !canFullyMatch(order)) {
                 return trades;
             }
             trades = matchLimitOrder(order);
-            if (!order->isFilled() && order->tif == TimeInForce::GTC) {
-                PriceLevel& level = order->side == Side::BUY ? bids_[order->price] : asks_[order->price];
+            if (!order.isFilled() && order.tif == TimeInForce::GTC) {
+                PriceLevel& level = order.side == Side::BUY ? bids_[order.price] : asks_[order.price];
                 level.addOrder(order);
-                orderLookup_.emplace(order->id, OrderEntry{ order, std::prev(level.orders_.end()) });
+                orderLookup_.emplace(order.id, OrderEntry{ std::prev(level.orders_.end()) });
             }
         } else {
             trades = matchMarketOrder(order);
@@ -151,12 +145,13 @@ public:
         if (orderIt == orderLookup_.end()) return false;
 
         const auto& entry = orderIt->second;
-        if (entry.order_->side == Side::BUY) {
-            PriceLevel& level = bids_.at(entry.order_->price);
+        const Order& order = *entry.location_;
+        if (order.side == Side::BUY) {
+            PriceLevel& level = bids_.at(order.price);
             level.removeOrder(entry.location_);
         }
         else {
-            PriceLevel& level = asks_.at(entry.order_->price);
+            PriceLevel& level = asks_.at(order.price);
             level.removeOrder(entry.location_);
         }
 
@@ -168,11 +163,10 @@ public:
         auto it = orderLookup_.find(order.id_);
         if (it == orderLookup_.end()) throw std::logic_error("order doesnt exist");
 
-        return {}; // no op
-        
-        const auto& standingOrder = it->second.order_;
+        const auto& standingOrder = *it->second.location_;
+        Order updatedOrder = order.toOrder(standingOrder.side, standingOrder.type, standingOrder.tif);
         cancelOrder(order.id_);
-        return addOrder(order.toOrderPointer(standingOrder->side, standingOrder->type, standingOrder->tif));
+        return addOrder(updatedOrder);
     }
 
     // Query methods - (Public interface)
@@ -234,63 +228,65 @@ private:
     std::map<Price, PriceLevel, std::greater<Price>> bids_;
     std::map<Price, PriceLevel> asks_;
     std::unordered_map<OrderId, OrderEntry> orderLookup_;
-    bool canFullyMatch(const OrderPointer& order) const {
+
+    bool canFullyMatch(const Order& order) const {
         Quantity vol = 0;
-        if (order->side == Side::BUY) {
+        if (order.side == Side::BUY) {
             if (asks_.empty()) return false;
-            for (auto it = asks_.begin(); it != asks_.end() && it->first <= order->price; ++it) {
+            for (auto it = asks_.begin(); it != asks_.end() && it->first <= order.price; ++it) {
                 vol += it->second.getTotalVolume();
-                if (vol >= order->getRemainingQuantity()) return true;
+                if (vol >= order.getRemainingQuantity()) return true;
             }
         } else {
             if (bids_.empty()) return false;
-            for (auto it = bids_.begin(); it != bids_.end() && it->first >= order->price; ++it) {
+            for (auto it = bids_.begin(); it != bids_.end() && it->first >= order.price; ++it) {
                 vol += it->second.getTotalVolume();
-                if (vol >= order->getRemainingQuantity()) return true;
+                if (vol >= order.getRemainingQuantity()) return true;
             }
         }
         return false;
     }
 
     // Matching engine
-    std::vector<Trade> matchOrder(const OrderPointer& order) {
-        if (order->type == OrderType::LIMIT) {
+    std::vector<Trade> matchOrder(Order& order) {
+        if (order.type == OrderType::LIMIT) {
             return matchLimitOrder(order);
         } else {
             return matchMarketOrder(order);
         }
     }
 
-    std::vector<Trade> matchLimitOrder(const OrderPointer& order) {
+    std::vector<Trade> matchLimitOrder(Order& order) {
         std::vector<Trade> trades;
 
-        if (order->side == Side::BUY) {
-            while (!order->isFilled()) {
+        if (order.side == Side::BUY) {
+            while (!order.isFilled()) {
                 if (asks_.empty()) break;
 
                 auto bestAskIt = asks_.begin();
                 Price askPrice = bestAskIt->first;
                 PriceLevel& bestAsks = bestAskIt->second;
 
-                if (askPrice > order->price) break;
+                if (askPrice > order.price) break;
 
-                while (!bestAsks.orders_.empty() && !order->isFilled()) {
-                    OrderPointer& standingOrder = bestAsks.orders_.front();
-                    Quantity fillQty = std::min(order->getRemainingQuantity(), standingOrder->getRemainingQuantity());
+                while (!bestAsks.orders_.empty() && !order.isFilled()) {
+                    Order& standingOrder = bestAsks.orders_.front();
+                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
 
-                    order->fill(fillQty);
-                    standingOrder->fill(fillQty);
+                    order.fill(fillQty);
+                    standingOrder.fill(fillQty);
+                    bestAsks.totalVolume_ -= fillQty;
 
                     trades.push_back(Trade{
-                        order->id,
-                        standingOrder->id,
+                        order.id,
+                        standingOrder.id,
                         askPrice,
                         fillQty
                     });
 
-                    if (standingOrder->isFilled()) {
+                    if (standingOrder.isFilled()) {
+                        orderLookup_.erase(standingOrder.id);
                         bestAsks.removeFrontOrder();
-                        orderLookup_.erase(standingOrder->id);
                     }
                 }
 
@@ -300,32 +296,33 @@ private:
 
             }
         } else {
-            while (!order->isFilled()) {
+            while (!order.isFilled()) {
                 if (bids_.empty()) break;
 
                 auto bestBidIt = bids_.begin();
                 Price bidPrice = bestBidIt->first;
                 auto& bestBids = bestBidIt->second;
 
-                if (bidPrice < order->price) break;
+                if (bidPrice < order.price) break;
 
-                while (!bestBids.orders_.empty() && !order->isFilled()) {
-                    OrderPointer& standingOrder = bestBids.orders_.front();
-                    Quantity fillQty = std::min(order->getRemainingQuantity(), standingOrder->getRemainingQuantity());
+                while (!bestBids.orders_.empty() && !order.isFilled()) {
+                    Order& standingOrder = bestBids.orders_.front();
+                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
 
-                    order->fill(fillQty);
-                    standingOrder->fill(fillQty);
+                    order.fill(fillQty);
+                    standingOrder.fill(fillQty);
+                    bestBids.totalVolume_ -= fillQty;
 
                     trades.push_back(Trade{
-                        order->id,
-                        standingOrder->id,
+                        order.id,                                                         
+                        standingOrder.id,
                         bidPrice,
                         fillQty
-                        });
+                    });
 
-                    if (standingOrder->isFilled()) {
+                    if (standingOrder.isFilled()) {
+                        orderLookup_.erase(standingOrder.id);
                         bestBids.removeFrontOrder();
-                        orderLookup_.erase(standingOrder->id);
                     }
                 }
 
@@ -338,30 +335,32 @@ private:
         return trades;
     }
 
-    std::vector<Trade> matchMarketOrder(const OrderPointer& order) {
+    std::vector<Trade> matchMarketOrder(Order& order) {
         std::vector<Trade> trades;
 
-        if (order->side == Side::BUY) {
-            while (!order->isFilled() && !asks_.empty()) {
+        if (order.side == Side::BUY) {
+            while (!order.isFilled() && !asks_.empty()) {
                 auto bestAskIt = asks_.begin();
                 Price askPrice = bestAskIt->first;
                 PriceLevel& bestAsks = bestAskIt->second;
 
-                while (!bestAsks.orders_.empty() && !order->isFilled()) {
-                    OrderPointer& standingOrder = bestAsks.orders_.front();
-                    Quantity fillQty = std::min(order->getRemainingQuantity(), standingOrder->getRemainingQuantity());
+                while (!bestAsks.orders_.empty() && !order.isFilled()) {
+                    Order& standingOrder = bestAsks.orders_.front();
+                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
 
-                    order->fill(fillQty);
-                    standingOrder->fill(fillQty);
+                    order.fill(fillQty);
+                    standingOrder.fill(fillQty);
+                    bestAsks.totalVolume_ -= fillQty;
+
                     trades.push_back(Trade{
-                        order->id,
-                        standingOrder->id,
+                        order.id,
+                        standingOrder.id,
                         askPrice,
                         fillQty
                     });
 
-                    if (standingOrder->isFilled()) {
-                        orderLookup_.erase(standingOrder->id); // check logic again (for errors, for some reason crash if swapped)
+                    if (standingOrder.isFilled()) {
+                        orderLookup_.erase(standingOrder.id); // check logic again (for errors, for some reason crash if swapped)
                         bestAsks.removeFrontOrder();
                     }
                 }
@@ -372,27 +371,28 @@ private:
 
             }
         } else {
-            while (!order->isFilled() && !bids_.empty()) {
+            while (!order.isFilled() && !bids_.empty()) {
                 auto bestBidIt = bids_.begin();
                 Price bidPrice = bestBidIt->first;
                 auto& bestBids = bestBidIt->second;
 
-                while (!bestBids.orders_.empty() && !order->isFilled()) {
-                    OrderPointer& standingOrder = bestBids.orders_.front();
-                    Quantity fillQty = std::min(order->getRemainingQuantity(), standingOrder->getRemainingQuantity());
+                while (!bestBids.orders_.empty() && !order.isFilled()) {
+                    Order& standingOrder = bestBids.orders_.front();
+                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
 
-                    order->fill(fillQty);
-                    standingOrder->fill(fillQty);
+                    order.fill(fillQty);
+                    standingOrder.fill(fillQty);
+                    bestBids.totalVolume_ -= fillQty;
 
                     trades.push_back(Trade{
-                        order->id,
-                        standingOrder->id,
+                        order.id,
+                        standingOrder.id,
                         bidPrice,
                         fillQty
                         });
 
-                    if (standingOrder->isFilled()) {
-                        orderLookup_.erase(standingOrder->id); // crash?
+                    if (standingOrder.isFilled()) {
+                        orderLookup_.erase(standingOrder.id); // crash?
                         bestBids.removeFrontOrder();
                     }
                 }
