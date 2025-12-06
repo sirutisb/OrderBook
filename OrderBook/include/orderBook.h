@@ -3,16 +3,9 @@
 #include <unordered_map>
 #include <list>
 #include <vector>
-#include <cstdint>
-#include <memory>
-#include <ranges>     // std::views::take
 #include <stdexcept>
 #include <format>
 #include <optional>
-
-
-#include <iostream>
-#include <iomanip>
 
 // Type aliases
 using Price = int64_t;
@@ -140,17 +133,18 @@ public:
 
         const auto& entry = orderIt->second;
         const Order& order = *entry.location_;
+
+        auto removeFromBook = [&](auto& book) {
+            auto levelIt = book.find(order.price);
+            PriceLevel& level = levelIt->second;
+            level.removeOrder(entry.location_);
+            if (level.isEmpty()) book.erase(levelIt);
+        };
+
         if (order.side == Side::BUY) {
-            auto levelIt = bids_.find(order.price);
-            PriceLevel& level = levelIt->second;
-            level.removeOrder(entry.location_);
-            if (level.isEmpty()) bids_.erase(levelIt);
-        }
-        else {
-            auto levelIt = asks_.find(order.price);
-            PriceLevel& level = levelIt->second;
-            level.removeOrder(entry.location_);
-            if (level.isEmpty()) asks_.erase(levelIt);
+            removeFromBook(bids_);
+        } else {
+            removeFromBook(asks_);
         }
 
         orderLookup_.erase(orderIt);
@@ -228,177 +222,81 @@ private:
     std::unordered_map<OrderId, OrderEntry> orderLookup_;
 
     bool canFullyMatch(const Order& order) const {
-        Quantity vol = 0;
-        if (order.side == Side::BUY) {
-            if (asks_.empty()) return false;
-            for (auto it = asks_.begin(); it != asks_.end() && it->first <= order.price; ++it) {
+        auto canMatchSide = [&order](auto& orderSide) {
+            Quantity vol = 0;
+            for (auto it = orderSide.begin(); it != orderSide.end() && it->first <= order.price; ++it) {
                 vol += it->second.getTotalVolume();
                 if (vol >= order.getRemainingQuantity()) return true;
             }
-        } else {
-            if (bids_.empty()) return false;
-            for (auto it = bids_.begin(); it != bids_.end() && it->first >= order.price; ++it) {
-                vol += it->second.getTotalVolume();
-                if (vol >= order.getRemainingQuantity()) return true;
-            }
-        }
-        return false;
+            return false;
+        };
+        return order.side == Side::BUY ? canMatchSide(asks_) : canMatchSide(bids_);
     }
 
     // Matching engine
     std::vector<Trade> matchOrder(Order& order) {
-        if (order.type == OrderType::LIMIT) {
-            return matchLimitOrder(order);
-        } else {
-            return matchMarketOrder(order);
-        }
+        return order.type == OrderType::LIMIT
+            ? matchLimitOrder(order)
+            : matchMarketOrder(order);
     }
 
-    std::vector<Trade> matchLimitOrder(Order& order) {
+    template <typename BookType>
+    std::vector<Trade> executeMatching(Order& order, BookType& book, auto&& shouldMatchPrice) {
         std::vector<Trade> trades;
 
-        if (order.side == Side::BUY) {
-            while (!order.isFilled()) {
-                if (asks_.empty()) break;
+        while (!order.isFilled() && !book.empty()) {
+            auto bestIt = book.begin();
+            Price bestPrice = bestIt->first;
 
-                auto bestAskIt = asks_.begin();
-                Price askPrice = bestAskIt->first;
-                PriceLevel& bestAsks = bestAskIt->second;
+            if (!shouldMatchPrice(bestPrice)) break;
 
-                if (askPrice > order.price) break;
+            PriceLevel& level = bestIt->second;
 
-                while (!bestAsks.orders_.empty() && !order.isFilled()) {
-                    Order& standingOrder = bestAsks.orders_.front();
-                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
+            // Match against all orders at this price level
+            while (!level.orders_.empty() && !order.isFilled()) {
+                Order& standingOrder = level.orders_.front();
+                Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
 
-                    order.fill(fillQty);
-                    standingOrder.fill(fillQty);
-                    bestAsks.totalVolume_ -= fillQty;
+                order.fill(fillQty);
+                standingOrder.fill(fillQty);
+                level.totalVolume_ -= fillQty;
 
-                    trades.push_back(Trade{
-                        order.id,
-                        standingOrder.id,
-                        askPrice,
-                        fillQty
-                    });
+                trades.push_back(Trade{
+                    order.id,
+                    standingOrder.id,
+                    bestPrice,
+                    fillQty
+                });
 
-                    if (standingOrder.isFilled()) {
-                        orderLookup_.erase(standingOrder.id);
-                        bestAsks.removeFrontOrder();
-                    }
+                if (standingOrder.isFilled()) {
+                    orderLookup_.erase(standingOrder.id);
+                    level.removeFrontOrder();
                 }
-
-                if (bestAsks.orders_.empty()) {
-                    asks_.erase(bestAskIt);
-                }
-
             }
-        } else {
-            while (!order.isFilled()) {
-                if (bids_.empty()) break;
 
-                auto bestBidIt = bids_.begin();
-                Price bidPrice = bestBidIt->first;
-                auto& bestBids = bestBidIt->second;
-
-                if (bidPrice < order.price) break;
-
-                while (!bestBids.orders_.empty() && !order.isFilled()) {
-                    Order& standingOrder = bestBids.orders_.front();
-                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
-
-                    order.fill(fillQty);
-                    standingOrder.fill(fillQty);
-                    bestBids.totalVolume_ -= fillQty;
-
-                    trades.push_back(Trade{
-                        order.id,                                                         
-                        standingOrder.id,
-                        bidPrice,
-                        fillQty
-                    });
-
-                    if (standingOrder.isFilled()) {
-                        orderLookup_.erase(standingOrder.id);
-                        bestBids.removeFrontOrder();
-                    }
-                }
-
-                if (bestBids.orders_.empty()) {
-                    bids_.erase(bestBidIt);
-                }
+            if (level.orders_.empty()) {
+                book.erase(bestIt);
             }
         }
 
         return trades;
     }
 
+    std::vector<Trade> matchLimitOrder(Order& order) {
+        if (order.side == Side::BUY) {
+            return executeMatching(order, asks_, [limit = order.price](Price ask) { return ask <= limit; });
+        } else {
+            return executeMatching(order, bids_, [limit = order.price](Price bid) { return bid >= limit; });
+        }
+    }
+
     std::vector<Trade> matchMarketOrder(Order& order) {
         std::vector<Trade> trades;
 
         if (order.side == Side::BUY) {
-            while (!order.isFilled() && !asks_.empty()) {
-                auto bestAskIt = asks_.begin();
-                Price askPrice = bestAskIt->first;
-                PriceLevel& bestAsks = bestAskIt->second;
-
-                while (!bestAsks.orders_.empty() && !order.isFilled()) {
-                    Order& standingOrder = bestAsks.orders_.front();
-                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
-
-                    order.fill(fillQty);
-                    standingOrder.fill(fillQty);
-                    bestAsks.totalVolume_ -= fillQty;
-
-                    trades.push_back(Trade{
-                        order.id,
-                        standingOrder.id,
-                        askPrice,
-                        fillQty
-                    });
-
-                    if (standingOrder.isFilled()) {
-                        orderLookup_.erase(standingOrder.id);
-                        bestAsks.removeFrontOrder();
-                    }
-                }
-
-                if (bestAsks.orders_.empty()) {
-                    asks_.erase(bestAskIt);
-                }
-
-            }
+            return executeMatching(order, asks_, [](Price) { return true; });
         } else {
-            while (!order.isFilled() && !bids_.empty()) {
-                auto bestBidIt = bids_.begin();
-                Price bidPrice = bestBidIt->first;
-                auto& bestBids = bestBidIt->second;
-
-                while (!bestBids.orders_.empty() && !order.isFilled()) {
-                    Order& standingOrder = bestBids.orders_.front();
-                    Quantity fillQty = std::min(order.getRemainingQuantity(), standingOrder.getRemainingQuantity());
-
-                    order.fill(fillQty);
-                    standingOrder.fill(fillQty);
-                    bestBids.totalVolume_ -= fillQty;
-
-                    trades.push_back(Trade{
-                        order.id,
-                        standingOrder.id,
-                        bidPrice,
-                        fillQty
-                        });
-
-                    if (standingOrder.isFilled()) {
-                        orderLookup_.erase(standingOrder.id);
-                        bestBids.removeFrontOrder();
-                    }
-                }
-
-                if (bestBids.orders_.empty()) {
-                    bids_.erase(bestBidIt);
-                }
-            }
+            return executeMatching(order, bids_, [](Price) { return true; });
         }
         return trades;
     }
