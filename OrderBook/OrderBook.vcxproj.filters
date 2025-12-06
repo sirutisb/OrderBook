@@ -26,8 +26,5 @@
     <ClInclude Include="include\lru_cache.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="include\marketSimulator.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
   </ItemGroup>
 </Project>

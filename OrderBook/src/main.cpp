@@ -1,12 +1,8 @@
 ﻿#include <iostream>
 #include <vector>
-
-#include "orderBook.h"
-
-#include <thread>
 #include <random>
 #include <chrono>
-#include <memory>
+#include "orderBook.h"
 
 void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWidth = 50) {
     auto asks = orderBook.getAskDepth(levels);
