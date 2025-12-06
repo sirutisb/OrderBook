@@ -2,6 +2,10 @@
 
 A lightweight C++ console limit order book implementation. It continuously generates random buy/sell orders, matches them against standing liquidity, and renders the current depth in the terminal so you can watch spreads, mid-prices, and volumes evolve in real time.
 
+## Preview
+<img width="746" height="689" alt="image" src="https://github.com/user-attachments/assets/daddc8a6-ce3a-4f3e-8baf-aadc94ad9b78" />
+
+
 ## Features
 - Limit, market, and basic time-in-force handling (GTC/IOC/FOK) backed by a price-level order book.
 - Order management operations: add, cancel, and modify existing orders.
