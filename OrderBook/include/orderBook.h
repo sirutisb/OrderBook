@@ -98,8 +98,6 @@ struct OrderModify {
 class OrderBook {
 public:
     OrderBook()
-        : nextOrderId_(0)
-        , nextTradeId_(0)
     {
     }
 
@@ -110,13 +108,16 @@ public:
 
     std::vector<Trade> addOrder(Order& order) {
         std::vector<Trade> trades;
+
         if (order.type == OrderType::LIMIT) {
             if (order.tif == TimeInForce::FOK && !canFullyMatch(order)) {
                 return trades;
             }
+
             trades = matchLimitOrder(order);
+
             if (!order.isFilled() && order.tif == TimeInForce::GTC) {
-                PriceLevel& level = order.side == Side::BUY ? bids_[order.price] : asks_[order.price];
+                PriceLevel& level = (order.side == Side::BUY) ? bids_[order.price] : asks_[order.price];
                 level.addOrder(order);
                 orderLookup_.emplace(order.id, OrderEntry{ std::prev(level.orders_.end()) });
             }
@@ -136,6 +137,7 @@ public:
 
         auto removeFromBook = [&](auto& book) {
             auto levelIt = book.find(order.price);
+            if (levelIt == book.end()) throw std::logic_error("no level in book found!");
             PriceLevel& level = levelIt->second;
             level.removeOrder(entry.location_);
             if (level.isEmpty()) book.erase(levelIt);
@@ -194,23 +196,8 @@ public:
         Quantity volume;
     };
 
-    std::vector<BookLevel> getBidDepth(size_t levels) const {
-        std::vector<BookLevel> depth;
-        depth.reserve(std::min(levels, bids_.size()));
-        for (auto it = bids_.begin(); levels > 0 && it != bids_.end(); --levels, ++it) {
-            depth.emplace_back(it->first, it->second.getTotalVolume());
-        }
-        return depth;
-    }
-
-    std::vector<BookLevel> getAskDepth(size_t levels) const {
-        std::vector<BookLevel> depth;
-        depth.reserve(std::min(levels, bids_.size()));
-        for (auto it = asks_.begin(); levels > 0 && it != asks_.end(); --levels, ++it) {
-            depth.emplace_back(it->first, it->second.getTotalVolume());
-        }
-        return depth;
-    }
+    std::vector<BookLevel> getBidDepth(size_t levels) const { return getDepthFrom(bids_, levels); }
+    std::vector<BookLevel> getAskDepth(size_t levels) const { return getDepthFrom(asks_, levels); }
 
     // Statistics
     size_t getOrderCount() const { return orderLookup_.size(); }
@@ -221,16 +208,37 @@ private:
     std::map<Price, PriceLevel> asks_;
     std::unordered_map<OrderId, OrderEntry> orderLookup_;
 
+
+    template <typename BookMap>
+    std::vector<BookLevel> getDepthFrom(const BookMap& book, size_t levels) const {
+        std::vector<BookLevel> depth;
+        depth.reserve(std::min(levels, book.size()));
+        for (auto it = book.begin(); levels > 0 && it != book.end(); --levels, ++it) {
+            depth.emplace_back(it->first, it->second.getTotalVolume());
+        }
+        return depth;
+    }
+
     bool canFullyMatch(const Order& order) const {
-        auto canMatchSide = [&order](auto& orderSide) {
-            Quantity vol = 0;
-            for (auto it = orderSide.begin(); it != orderSide.end() && it->first <= order.price; ++it) {
-                vol += it->second.getTotalVolume();
-                if (vol >= order.getRemainingQuantity()) return true;
+        Quantity requiredQty = order.getRemainingQuantity();
+        Quantity availableQty = 0;
+
+        if (order.side == Side::BUY) {
+            // Match against Asks
+            for (const auto& [price, level] : asks_) {
+                if (price > order.price) break;
+                availableQty += level.getTotalVolume();
+                if (availableQty >= requiredQty) return true;
             }
-            return false;
-        };
-        return order.side == Side::BUY ? canMatchSide(asks_) : canMatchSide(bids_);
+        } else {
+            // Match against Bids
+            for (const auto& [price, level] : bids_) {
+                if (price < order.price) break;
+                availableQty += level.getTotalVolume();
+                if (availableQty >= requiredQty) return true;
+            }
+        }
+        return false;
     }
 
     // Matching engine
@@ -240,8 +248,8 @@ private:
             : matchMarketOrder(order);
     }
 
-    template <typename BookType>
-    std::vector<Trade> executeMatching(Order& order, BookType& book, auto&& shouldMatchPrice) {
+    template <typename BookType, typename Predicate>
+    std::vector<Trade> executeMatching(Order& order, BookType& book, Predicate&& shouldMatchPrice) {
         std::vector<Trade> trades;
 
         while (!order.isFilled() && !book.empty()) {
@@ -259,6 +267,9 @@ private:
 
                 order.fill(fillQty);
                 standingOrder.fill(fillQty);
+
+                // Todo: method to reduce volume
+                // remove will not reduce volume and will need to call reduce first in PriceLevel class.
                 level.totalVolume_ -= fillQty;
 
                 trades.push_back(Trade{
@@ -291,16 +302,10 @@ private:
     }
 
     std::vector<Trade> matchMarketOrder(Order& order) {
-        std::vector<Trade> trades;
-
         if (order.side == Side::BUY) {
             return executeMatching(order, asks_, [](Price) { return true; });
         } else {
             return executeMatching(order, bids_, [](Price) { return true; });
         }
-        return trades;
     }
-
-    uint64_t nextOrderId_;
-    uint64_t nextTradeId_;
 };

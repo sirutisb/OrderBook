@@ -3,6 +3,7 @@
 #include <random>
 #include <chrono>
 #include "orderBook.h"
+#include <thread>
 
 void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWidth = 50) {
     auto asks = orderBook.getAskDepth(levels);
@@ -17,7 +18,7 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
         maxVolume = std::max(maxVolume, level.volume);
     for (const auto& level : bids)
         maxVolume = std::max(maxVolume, level.volume);
-
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        
     if (maxVolume == 0) {
         return;
     }
@@ -95,6 +96,8 @@ int main() {
 
     // Market Simulation Set up
 
+    
+
     auto addOrder = [&]() {
         Side side = (sideDist(rng) == 0) ? Side::BUY : Side::SELL;
         // 90% Limit, 10% Market
@@ -162,6 +165,7 @@ int main() {
         }
        };
 
+    std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 
     // Main Event Loop
     for (int i = 0;; ++i) {
