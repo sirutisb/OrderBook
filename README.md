@@ -11,6 +11,18 @@ A lightweight C++ console limit order book implementation. It continuously gener
 - Order management operations: add, cancel, and modify existing orders.
 - Simple depth visualization showing top-of-book prices, spread, mid-price, and relative volume bars.
 
+## Complexity
+The core engine utilizes a std::map for price levels and a std::unordered_map for order lookups.
+
+| Operation | Complexity | Description |
+| :--- | :--- | :--- |
+| **Place Order** | $O(\log M)$ | Searching/Inserting the price level. |
+| **Cancel Order** | $O(\log M)$ | Tree search to locate and remove liquidity. |
+| **Match** | $O(T)$ | Linear to the number of trades ($T$) generated. |
+| **Get Best Bid/Ask**| $O(1)$ | Direct access to the map's begin iterator. |
+
+*(Where $M$ is the number of active price levels)*
+
 ## Build
 The code requires a C++20 compiler and POSIX threads. You can compile the console app with `g++`:
 
