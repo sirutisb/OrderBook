@@ -194,6 +194,7 @@ public:
     struct BookLevel {
         Price price;
         Quantity volume;
+        BookLevel(Price p, Quantity v) : price(p), volume(v) {}
     };
 
     std::vector<BookLevel> getBidDepth(size_t levels) const { return getDepthFrom(bids_, levels); }

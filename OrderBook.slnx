@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="OrderBook/OrderBook.vcxproj" Id="8f66224c-76e0-45ea-9a20-6a80d55293e0" />
-</Solution>
