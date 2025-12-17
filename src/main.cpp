@@ -1,9 +1,13 @@
-﻿#include <iostream>
-#include <vector>
-#include <random>
+﻿#include <algorithm>
 #include <chrono>
-#include "orderBook.h"
+#include <cstdint>
+#include <iostream>
+#include <random>
+#include <string>
 #include <thread>
+#include <vector>
+
+#include "orderBook.h"
 
 void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWidth = 50) {
     auto asks = orderBook.getAskDepth(levels);
@@ -59,10 +63,10 @@ void printOrderBook(const OrderBook& orderBook, size_t levels = 10, size_t barWi
     for (const auto& level : bids) {
         int barLength = static_cast<int>((level.volume * barWidth) / maxVolume);
 
-        buffer
-            += std::to_string(level.price) + " | "
-            += std::to_string(level.volume) + " | "
-            += std::string(barLength, '#') + "\n";
+        buffer +=
+            std::to_string(level.price) + " | "
+            + std::to_string(level.volume) + " | "
+            + std::string(barLength, '#') + "\n";
     }
 
     buffer += std::string(80, '=') + "\n";
